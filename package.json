@@ -6,6 +6,10 @@
   "scripts": {
     "test": "jest"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/littlefattie/redis-client-ts.git"
+  },
   "keywords": [
     "redis",
     "redis-client",
