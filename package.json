@@ -1,0 +1,26 @@
+{
+  "name": "redis-client-ts",
+  "version": "1.0.0",
+  "description": "The Redis client written in Typescript. It supports object write/read, list read/write, and number/string atomic operation, user-friendly and intuitive.",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "keywords": [
+    "redis",
+    "redis-client",
+    "typescript",
+    "pooled"
+  ],
+  "author": "Little Fattie",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/jest": "^27.4.0",
+    "@types/node": "^17.0.8",
+    "@types/uuid": "^8.3.3",
+    "jest": "^27.4.6"
+  },
+  "dependencies": {
+    "uuid": "^8.3.2"
+  }
+}
