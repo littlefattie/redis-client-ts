@@ -31,6 +31,11 @@ export type RespResponse = {
   content: RespArrayElement | Array<RespResponse>;
 }
 
+/**
+ * The method to parse the data returned from the socket.
+ * @param data The data in buffer received from the socket
+ * @returns The parsed response
+ */
 function parse(data: Buffer): Array<RespResponse> {
   if (!data) return [];
   if (data.length < 1) return [];
@@ -64,6 +69,7 @@ function parse(data: Buffer): Array<RespResponse> {
     checkIfArrayEnded();
   }
 
+  // The core part to parse/decode the protocol
   const crlf = new Uint8Array([13, 10]);
   let i = 0;
   while (i < data.length) {
@@ -143,6 +149,7 @@ function parse(data: Buffer): Array<RespResponse> {
         i++;
     }
   }
+
   // Fix the un-ended arrays
   if (arrayStack.length > 0) {
     while (arrayStack.length > 0) {
@@ -157,8 +164,28 @@ function parse(data: Buffer): Array<RespResponse> {
   return rootArray;
 }
 
+/**
+ * The ultility function to translate the modeled response parsed to pure-content form.
+ * @param parsed The directly parsed data from socket receiving buffer
+ * @returns The array which holds the pure content of the protocol segment
+ */
+function translateResult(parsed: Array<RespResponse>): Array<RespArrayElement> {
+  return parsed.map(x => {
+    if (x.contentType === "array") {
+      return translateResult(x.content as Array<RespResponse>);
+    } else {
+      return x.content as (RedisError | number | string | null);
+    }
+  });
+}
+
 export type RespCommand = Array<string | number>;
 
+/**
+ * The function to encode commands to protocol strings.
+ * @param command The command consisting of segmented strings
+ * @returns The encoded protocol string that will be written to socket.
+ */
 function encode(command: RespCommand): string {
   if (!command || command.length < 1) return "";
   const cmds = command.map(v => {
@@ -177,4 +204,5 @@ function encode(command: RespCommand): string {
 export default {
   encode,
   parse,
+  translateResult,
 }

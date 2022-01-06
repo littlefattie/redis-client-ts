@@ -4,7 +4,7 @@ import { v4 as uuidv4} from "uuid";
 
 import { IRedisClientPool } from "./pool";
 import redisCommands from "./commands";
-import protocol, { RedisError, RespContentType, RespResponse } from "./protocol";  
+import protocol, { RedisError, RespArrayElement, RespCommand, RespContentType, RespResponse } from "./protocol";  
 
 export interface IRedisClientOptions {
   host?: string;
@@ -36,7 +36,11 @@ export interface IRedisClient {
 
   close(): void;
 
-  rawCommand(...cmds: Array<string | number>): Promise<Array<RespResponse>>;
+  rawCommand(...cmds: RespCommand): Promise<Array<RespResponse>>;
+  rawCommandInPipeLine(cmds: Array<RespCommand>): Promise<Array<RespResponse>>;
+
+  singleCommand(...cmds: RespCommand): Promise<RespArrayElement[]>;
+  commandsInPipeline(cmds: Array<RespCommand>): Promise<RespArrayElement[][]>;
 
   // Delete
   delete(key: string): Promise<void>;
@@ -122,14 +126,12 @@ export class RedisClient implements IRedisClient{
     this.state = RedisClient.states.CREATED;
 
     this.socket.on("error", () => {
-      this.goToError("Socket Error happened!");   
+      this.setError("Socket Error happened!");   
     })
     
     this.socket.on('connect', async () => {
       // Init socket after socket connection successfully established.
       this.socketInit();
-      // Auth is required
-
       // Issue the first PING Command
       await this.rawCommand(...redisCommands.connection.PING)
         .then(answer => {
@@ -144,13 +146,10 @@ export class RedisClient implements IRedisClient{
                   : [this.options.password];
                 return this.rawCommand(...redisCommands.connection.AUTH, ...auth);
               } else {
-                this.state = RedisClient.states.UNABLE_TO_AUTH;
-                if (this.onAuthFailed && typeof this.onAuthFailed === "function") {
-                  this.onAuthFailed();
-                }
+                this.setUnableToAuth();
               }
           } else {
-            this.goToError("Basic Communication test failed!");
+            this.setError("Basic Communication test failed!");
           }
         })
         .then(authResult => {
@@ -158,13 +157,13 @@ export class RedisClient implements IRedisClient{
             if (authResult.length === 1 && authResult[0].content === "OK") {
               this.getReady();
             } else {
-              this.goToError("AUTH failed, please check the username and password!")
+              this.setError("AUTH failed, please check the username and password!")
             }
           }
         })
         .catch(err => {
           // This Exception is timeout for a command.
-          this.goToError("Basic Communication test failed!");
+          this.setError("Basic Communication test failed!");
         });
     });
   }
@@ -206,7 +205,10 @@ export class RedisClient implements IRedisClient{
     }
   }
 
-  public rawCommand(...cmds: (string | number)[]): Promise<RespResponse[]> {
+  public rawCommand(...cmds: RespCommand): Promise<RespResponse[]> {
+    if (this.state !== RedisClient.states.CREATED  && this.state !== RedisClient.states.READY) {
+      return Promise.reject("The client is not ready!");
+    }
     return new Promise((resolve, reject) => {
       const cmdOut = protocol.encode(cmds);
       this.socket.write(cmdOut);
@@ -223,7 +225,10 @@ export class RedisClient implements IRedisClient{
     });
   }
 
-  public commands(cmds: (string | number)[][]): Promise<RespResponse[]> {
+  public rawCommandInPipeLine(cmds: RespCommand[]): Promise<RespResponse[]> {
+    if (this.state !== RedisClient.states.READY) {
+      return Promise.reject("Client is not in READY state!");
+    }
     return new Promise((resolve, reject) => {
       const cmdOut = cmds.map(cmd => protocol.encode(cmd)).join("");
       this.socket.write(cmdOut);
@@ -236,12 +241,72 @@ export class RedisClient implements IRedisClient{
       this.cmdCallback = (data: Array<RespResponse>) => {
         clearTimeout(timeoutId);
         resolve(data);
+        // Remove the callback after execution
+        this.cmdCallback = undefined;
       }
     });
   }
 
+  public singleCommand(...cmds: RespCommand): Promise<RespArrayElement[]> {
+    if (this.state !== RedisClient.states.READY) {
+      return Promise.reject("Client is not in READY state!");
+    }
+    return new Promise((resolve, reject) => {
+      const cmdOut = protocol.encode(cmds);
+      this.socket.write(cmdOut);
+      // Setup timeout
+      const timeoutId = setTimeout(() => {
+        this.cmdCallback = undefined;
+        reject(`Command timeout occured after ${CMD_TIMEOUT / 1000} seconds.`);
+      }, CMD_TIMEOUT);
+      // Assign callback
+      this.cmdCallback = (data: Array<RespResponse>) => {
+        clearTimeout(timeoutId);
+        if (data.length === 1) {
+          const response = data[0];
+          if (response.contentType === "error") {
+            const err = response.content as RedisError;
+            reject(`Error returned: ${err.tag} - ${err.msg}`);
+          } else {
+            const content = response.contentType === "array" ? (response.content as Array<RespResponse>) : data
+            resolve(protocol.translateResult(content));
+          }
+        } else {
+          reject("Command failed!");
+        }
+        // Remove the callback after execution
+        this.cmdCallback = undefined;
+      }
+    });
+  }
+
+  public commandsInPipeline(cmds: RespCommand[]): Promise<RespArrayElement[][]> {
+    if (this.state !== RedisClient.states.READY) {
+      return Promise.reject("Client is not in READY state!");
+    }
+    return new Promise((resolve, reject) => {
+      const cmdOut = cmds.map(cmd => protocol.encode(cmd)).join("");
+      this.socket.write(cmdOut);
+      // Setup timeout setting 
+      const timeoutId = setTimeout(() => {
+        this.cmdCallback = undefined;
+        reject(`Command timeout occured after ${CMD_TIMEOUT / 1000} seconds.`)
+      }, CMD_TIMEOUT);
+      // Setup command callback to resolve data parsed
+      this.cmdCallback = (data: Array<RespResponse>) => {
+        clearTimeout(timeoutId);
+        resolve(data.map(x => {
+          const array = x.contentType === "array" ? (x.content as Array<RespResponse>) : [x];
+          return protocol.translateResult(array);
+        }));
+        // Remove the callback after execution
+        this.cmdCallback = undefined;
+      }
+    });      
+  }
+
   /**
-   * The abstracted quick commands
+   * -----------------------   The abstracted quick commands  --------------------------------------------------------
    */
   
   /**
@@ -393,7 +458,7 @@ export class RedisClient implements IRedisClient{
     }
   }
 
-  private goToError(msg: string): void {
+  private setError(msg: string): void {
     this.state = RedisClient.states.ERRORED;
     // Close the socket when errored
     this.close();
@@ -403,6 +468,13 @@ export class RedisClient implements IRedisClient{
       // console.log("SOCKET ERROR emited to outer module.")
       this.onError(new Error(msg));
     } 
+  }
+
+  private setUnableToAuth(): void {
+    this.state = RedisClient.states.UNABLE_TO_AUTH;
+    if (this.onAuthFailed && typeof this.onAuthFailed === "function") {
+      this.onAuthFailed();
+    }
   }
 
   private socketInit(): void {
@@ -430,7 +502,7 @@ export class RedisClient implements IRedisClient{
     }
 
     this.socket.on("data", (data: Buffer) => {
-      console.log('On DATA set!');
+      // console.log('On DATA hit!');
       const parsedData = protocol.parse(data);
       if (this.cmdCallback && typeof this.cmdCallback === 'function') {
         this.cmdCallback(parsedData);
