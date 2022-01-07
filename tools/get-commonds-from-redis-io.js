@@ -61,14 +61,37 @@ const buildCommandsCodeFromHtml = (doc) => {
     return `  ${catWithoutHyphen}: {${codeCmds}\n  },\n`
   }).join("\n")
 
-  var cmdsInCode = `/**
- * The redis commands recognized in categories. 
- */
+  var cmdsInFlat = [];
+  cats.forEach(cat => cmdsInFlat.push(...dict[cat]));
+  const flatCmds = cmdsInFlat.map(c => {
+    const nameAsKey = c.name.map(n => n.trim().replace(/-/g, "_")).join("_");
+    const nameAsArray = c.name.map(n => `"${n.trim()}"`).join(", ");
+    
+    return `
+  /**
+   * @Usage ${c.usage}
+   * @Purpose ${c.explanation}
+   */
+  ${nameAsKey}: [${nameAsArray}],`;
+  }).join("\n");
 
+
+
+  var cmdsInCode = `/**
+ * The redis commands in a big list. 
+ */
 export default {
+${flatCmds}
+}
+
+/**
+ * The redis commands organized in categories. 
+ */
+export const redisCommandsInCatgory = {
 
 ${cmds}
 };
+
 `;
 
   return cmdsInCode;

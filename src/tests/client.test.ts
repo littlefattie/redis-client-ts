@@ -24,7 +24,7 @@ describe("Test the client", () => {
 
   it("Test RAW command", async () => {
     // if (client.state === RedisClient.states.READY) {
-      await client.rawCommand(...redisCommands.generic.KEYS, "*")
+      await client.rawCommand(...redisCommands.KEYS, "*")
         .then(answer => {
           console.log(answer[0]);
         })
