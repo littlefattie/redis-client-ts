@@ -179,7 +179,7 @@ function translateResult(parsed: Array<RespResponse>): Array<RespArrayElement> {
   });
 }
 
-export type RespCommand = Array<string | number>;
+export type RespCommand = Array<string | number | null>;
 
 /**
  * The function to encode commands to protocol strings.
