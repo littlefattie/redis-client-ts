@@ -22,13 +22,13 @@ export interface IRedisClientOptions {
     cert: Buffer;
   };
 }
-type ObjFieldValue = string | number | Date | null;
+export type ObjFieldValue = string | number | Date | null;
 
 export type ObjInRedis = {
   [key: string]: ObjFieldValue;
 }
 
-type ZsetCollection = {
+export type ZsetCollection = {
   [member: string]: number;
 }
 
@@ -67,6 +67,7 @@ export interface IRedisClient {
   // Counter commands
   incr(counter: string): Promise<number>;
   decr(counter: string): Promise<number>;
+  incrBy(counter: string, inc: number): Promise<number>;
   setCounter(counterName: string, value: number): Promise<number>;
   getCounter(counterName: string): Promise<number>;
   
@@ -117,6 +118,11 @@ export interface IRedisClient {
   zGetItemsWithScoresIn(key: string, scoreMin: number, scoreMax: number): Promise<ZsetCollection>;
   zGetScoresOfMembers(key: string, members: string[], redisVerAbove620?:boolean): Promise<(number | null)[]>;
   zRemoveMembers(key: string, members: string[]): Promise<void>;
+
+  // Expire methods
+  expireAfter(key: string, time: number, inMilliSec?: boolean): Promise<boolean>;
+  expireAt(key: string, time: Date, useMilliSec?: boolean): Promise<boolean>;
+  getTTL(key: string, inMilliSec?: boolean): Promise<number>;
 }
 
 // Default timeout choices
@@ -341,12 +347,13 @@ export class RedisClient implements IRedisClient{
       // Setup timeout setting 
       const timeoutId = setTimeout(() => {
         this.cmdCallback = undefined;
-        reject(`Command timeout occured after ${this.options.timeout.cmd / 1000} seconds.`)
+        reject(`Command  ${cmds[0]} timeout occured after ${this.options.timeout.cmd / 1000} seconds.`)
       }, this.options.timeout.cmd);
       // Setup command callback to resolve data parsed
       this.cmdCallback = (data: Array<RespResponse>) => {
         clearTimeout(timeoutId);
         resolve(data);
+        this.cmdCallback = undefined;
       }
     });
   }
@@ -361,7 +368,7 @@ export class RedisClient implements IRedisClient{
       // Setup timeout setting 
       const timeoutId = setTimeout(() => {
         this.cmdCallback = undefined;
-        reject(`Command timeout occured after ${this.options.timeout.cmd / 1000} seconds.`)
+        reject(`Command  ${cmds[0][0]} timeout occured after ${this.options.timeout.cmd / 1000} seconds.`)
       }, this.options.timeout.cmd);
       // Setup command callback to resolve data parsed
       this.cmdCallback = (data: Array<RespResponse>) => {
@@ -383,7 +390,7 @@ export class RedisClient implements IRedisClient{
       // Setup timeout
       const timeoutId = setTimeout(() => {
         this.cmdCallback = undefined;
-        reject(`Command timeout occured after ${this.options.timeout.cmd / 1000} seconds.`);
+        reject(`Command ${cmds[0]} timeout occured after ${this.options.timeout.cmd / 1000} seconds.`);
       }, this.options.timeout.cmd);
       // Assign callback
       this.cmdCallback = (data: Array<RespResponse>) => {
@@ -416,7 +423,7 @@ export class RedisClient implements IRedisClient{
       // Setup timeout setting
       const timeoutId = setTimeout(() => {
         this.cmdCallback = undefined;
-        reject(`Command timeout occured after ${this.options.timeout.cmd / 1000} seconds.`)
+        reject(`Command ${cmds[0][0]} timeout occured after ${this.options.timeout.cmd / 1000} seconds.`)
       }, this.options.timeout.cmd);
       // Setup command callback to resolve data parsed
       this.cmdCallback = (data: Array<RespResponse>) => {
@@ -462,6 +469,17 @@ export class RedisClient implements IRedisClient{
    */
   public decr(counter: string): Promise<number> {
     return this.singleCommand(...redisCommands.DECR, counter)
+      .then(res => res[0] as number);
+  }
+
+  /**
+   * Increment a counter by some given amount.
+   * @param counter The counter that will be incremented with
+   * @param inc The amount to increment
+   * @returns The counter value after incrementing
+   */
+  public incrBy(counter: string, inc: number): Promise<number> {
+    return this.singleCommand(...redisCommands.INCRBY, counter, inc)
       .then(res => res[0] as number);
   }
 
@@ -541,7 +559,7 @@ export class RedisClient implements IRedisClient{
     if (v === 'null') {
       return null;
     } else if ((v instanceof Date) || typeof v === "object") {
-      return `date:<${(v as Date).getTime}>`;
+      return `date:<${(v as Date).getTime()}>`;
     } else if (typeof v === "number") {
       return `number:<${v as number}>`;
     } else return v;
@@ -860,7 +878,7 @@ export class RedisClient implements IRedisClient{
           return this.commandsInPipeline(cmds)
             .then(res => {
               const unchanged = res.map(r => r[0] as string | null)
-                .filter((x, i) => i < index);
+                .filter((x, i) => i < res.length - 1);
               // Push back
               return unchanged.length > 0
                 ? this.singleCommand(...redisCommands.LPUSH, key, ...unchanged.reverse())
@@ -875,7 +893,7 @@ export class RedisClient implements IRedisClient{
           return this.commandsInPipeline(cmds)
             .then(res => {
               const unchanged = res.map(r => r[0] as string | null)
-                .filter((x, i) => i > index);
+                .filter((x, i) => i < res.length - 1);
               // Push back
               return unchanged.length > 0
               ? this.singleCommand(...redisCommands.RPUSH, key, ...unchanged.reverse())
@@ -944,8 +962,8 @@ export class RedisClient implements IRedisClient{
             return this.commandsInPipeline(cmds)
               .then(res => {
                 const lpoped = res.map(r => r[0] as string | null);
-                itemsToInsert.push(...lpoped);
-                return this.singleCommand(...redisCommands.LPUSH, key, ...itemsToInsert.reverse())
+                lpoped.push(...itemsToInsert);
+                return this.singleCommand(...redisCommands.LPUSH, key, ...lpoped.reverse())
                   .then(x => Promise.resolve());
               });
           } else {
@@ -1036,7 +1054,7 @@ export class RedisClient implements IRedisClient{
   public zAddToSet(key: string, members: ZsetCollection, nxORxx?: "NX" | "XX", ltORgt?: "LT" | "GT"): Promise<void> {
     const memScores: (string | number)[] = [];
     for (let m in members) {
-      memScores.push(m, members[m])
+      memScores.push(members[m], m)
     }
     const options: string[] = [];
     if (nxORxx) options.push(nxORxx);
@@ -1064,7 +1082,7 @@ export class RedisClient implements IRedisClient{
    */
   public zGetCountWithScoreIn(key: string, min: number, max: number): Promise<number> {
     max = max >= min ? max : min;
-    return this.singleCommand(...redisCommands.ZRANGEBYSCORE, key, min, max, 'WITHSCORES')
+    return this.singleCommand(...redisCommands.ZRANGEBYSCORE, key, min, max)
       .then(res => Promise.resolve(res.length));
   }
 
@@ -1193,6 +1211,53 @@ export class RedisClient implements IRedisClient{
   }
 
   /**
+   * Expire some key after some time.
+   * @param key The key to expire
+   * @param time How long before the key get expired, it is just the number part, e.g. if set to 10,
+   * then the real time is 10 sec if `inMilliSec` is not set, or 10 milli-sec if `inMilliSec` is not set
+   * or set to `false`.
+   * @param inMilliSec Whether use milliseconds as the time unit
+   * @returns Whether the expire operation is successful
+   */
+  public expireAfter(key: string, time: number, inMilliSec?: boolean): Promise<boolean> {
+    const cmdUsed = inMilliSec ? redisCommands.PEXPIRE : redisCommands.EXPIRE;
+    return this.singleCommand(...cmdUsed, key, time)
+      .then(res => Promise.resolve((res[0] as number) === 1));
+  }
+
+  /**
+   * Expire some key at given time tick.
+   * @param key The key to expire
+   * @param time When (specified Date/Time)
+   * @param useMilliSec An indicator to mark whether use milliseconds as unit to expire the key
+   * @returns Whether the expire action is successful or not
+   */
+  public expireAt(key: string, time: Date, useMilliSec?: boolean): Promise<boolean> {
+    const cmdUsed = useMilliSec ? redisCommands.PEXPIREAT : redisCommands.EXPIREAT;
+    const msec = time.getTime();
+    return this.singleCommand(...cmdUsed, key, useMilliSec ? msec : (msec / 1000))
+      .then(res => Promise.resolve((res[0] as number) === 1));
+  }
+
+  /**
+   * Get the TTL of one key, either in seconds unit or milli seconds unit.
+   * @param key Key to query
+   * @param inMilliSec A switch to indicate whether get the ttl in milliseconds, if set, the result returned
+   * will be in milliseconds.
+   * @returns The TTL either in seconds or milli seconds
+   */
+  public getTTL(key: string, inMilliSec?: boolean): Promise<number> {
+    const cmdUsed = inMilliSec ? redisCommands.PTTL : redisCommands.TTL;
+    return this.singleCommand(...cmdUsed, key)
+      .then(res => {
+        const ttl = res[0] as number;
+        if (ttl === -2) return Promise.reject(`Key ${key} is not existing.`);
+        else if (ttl === -1) return Promise.resolve(Number.MAX_SAFE_INTEGER);
+        else return Promise.resolve(ttl);
+      });
+  }
+
+  /**
    * -----------------------------------   Private methods -------------------------------------------------------------------
    */
 
@@ -1269,7 +1334,7 @@ export class RedisClient implements IRedisClient{
      * THis envent handler will transfer the data received from the socket to attached callbacks from Promises
      */
     skt.on("data", (data: Buffer) => {
-      console.log('On DATA hit!');
+      // console.log('On DATA hit!');
       const parsedData = protocol.parse(data);
       if (this.cmdCallback && typeof this.cmdCallback === 'function') {
         this.cmdCallback(parsedData);
