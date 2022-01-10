@@ -27,9 +27,9 @@ export type ObjFieldValue = string | number | Date | null;
 export type ObjInRedis = {
   [key: string]: ObjFieldValue;
 }
-
-export type ZsetCollection = {
-  [member: string]: number;
+export interface ZSetItem {
+  name: string;
+  score: number;
 }
 
 export interface IRedisClient {
@@ -108,14 +108,14 @@ export interface IRedisClient {
   isItemInSet(key: string, item: (string | number)): Promise<boolean>;
   
   // Sorted Set
-  zAddToSet(key: string, members: ZsetCollection, nxORxx?: "NX" | "XX", ltORgt?: "LT" | "GT"): Promise<void>;
+  zAddToSet(key: string, members: ZSetItem[], nxORxx?: "NX" | "XX", ltORgt?: "LT" | "GT"): Promise<void>;
   zGetCount(key: string): Promise<number>;
   zGetCountWithScoreIn(key: string, min: number, max: number): Promise<number>;
   zIncrBy(key: string, member: string, inc: number): Promise<number>;
-  zGetTopItems(key: string, count: number): Promise<ZsetCollection>;
-  zGetBottomItems(key: string, count: number): Promise<ZsetCollection>;
+  zGetTopItems(key: string, count: number): Promise<ZSetItem[]>;
+  zGetBottomItems(key: string, count: number): Promise<ZSetItem[]>;
   zGetRank(key: string, member: string): Promise<number>;
-  zGetItemsWithScoresIn(key: string, scoreMin: number, scoreMax: number): Promise<ZsetCollection>;
+  zGetItemsWithScoresIn(key: string, scoreMin: number, scoreMax: number): Promise<ZSetItem[]>;
   zGetScoresOfMembers(key: string, members: string[], redisVerAbove620?:boolean): Promise<(number | null)[]>;
   zRemoveMembers(key: string, members: string[]): Promise<void>;
 
@@ -159,6 +159,11 @@ export class RedisClient implements IRedisClient{
   private onEnd?: () => void;
   private onTimeout?: () => void;
   private onReady?: () => void;
+
+  private timeoutRawCommand?: NodeJS.Timeout;
+  private timeoutRawMultiple?: NodeJS.Timeout;
+  private timeoutSingleCommand?: NodeJS.Timeout;
+  private timeoutMultipleCommand?: NodeJS.Timeout;
 
   private cmdCallback?: (parsedData: Array<RespResponse>) => void;
 
@@ -262,6 +267,12 @@ export class RedisClient implements IRedisClient{
   }
 
   public close(): void {
+    // Clear Command timeouts if any
+    if (this.timeoutRawCommand) clearTimeout(this.timeoutRawCommand);
+    if (this.timeoutRawMultiple) clearTimeout(this.timeoutRawMultiple);
+    if (this.timeoutSingleCommand) clearTimeout(this.timeoutSingleCommand);
+    if (this.timeoutMultipleCommand) clearTimeout(this.timeoutMultipleCommand);
+
     if (this.socket) {
       this.socket.end();
       this.socket.destroy();
@@ -345,13 +356,13 @@ export class RedisClient implements IRedisClient{
       const cmdOut = protocol.encode(cmds);
       (this.socket as Socket).write(cmdOut);
       // Setup timeout setting 
-      const timeoutId = setTimeout(() => {
+      this.timeoutRawCommand = setTimeout(() => {
         this.cmdCallback = undefined;
         reject(`Command  ${cmds[0]} timeout occured after ${this.options.timeout.cmd / 1000} seconds.`)
       }, this.options.timeout.cmd);
       // Setup command callback to resolve data parsed
       this.cmdCallback = (data: Array<RespResponse>) => {
-        clearTimeout(timeoutId);
+        if (this.timeoutRawCommand) clearTimeout(this.timeoutRawCommand);
         resolve(data);
         this.cmdCallback = undefined;
       }
@@ -366,13 +377,13 @@ export class RedisClient implements IRedisClient{
       const cmdOut = cmds.map(cmd => protocol.encode(cmd)).join("");
       (this.socket as Socket).write(cmdOut);
       // Setup timeout setting 
-      const timeoutId = setTimeout(() => {
+      this.timeoutRawMultiple = setTimeout(() => {
         this.cmdCallback = undefined;
         reject(`Command  ${cmds[0][0]} timeout occured after ${this.options.timeout.cmd / 1000} seconds.`)
       }, this.options.timeout.cmd);
       // Setup command callback to resolve data parsed
       this.cmdCallback = (data: Array<RespResponse>) => {
-        clearTimeout(timeoutId);
+        if (this.timeoutRawMultiple) clearTimeout(this.timeoutRawMultiple);
         resolve(data);
         // Remove the callback after execution
         this.cmdCallback = undefined;
@@ -388,13 +399,13 @@ export class RedisClient implements IRedisClient{
       const cmdOut = protocol.encode(cmds);
       (this.socket as Socket).write(cmdOut);
       // Setup timeout
-      const timeoutId = setTimeout(() => {
+      this.timeoutSingleCommand = setTimeout(() => {
         this.cmdCallback = undefined;
         reject(`Command ${cmds[0]} timeout occured after ${this.options.timeout.cmd / 1000} seconds.`);
       }, this.options.timeout.cmd);
       // Assign callback
       this.cmdCallback = (data: Array<RespResponse>) => {
-        clearTimeout(timeoutId);
+        if (this.timeoutSingleCommand) clearTimeout(this.timeoutSingleCommand);
         if (data.length === 1) {
           const response = data[0];
           if (response.contentType === "error") {
@@ -421,13 +432,13 @@ export class RedisClient implements IRedisClient{
       const cmdOut = cmds.map(cmd => protocol.encode(cmd)).join("");
       (this.socket as Socket).write(cmdOut);
       // Setup timeout setting
-      const timeoutId = setTimeout(() => {
+      this.timeoutMultipleCommand = setTimeout(() => {
         this.cmdCallback = undefined;
         reject(`Command ${cmds[0][0]} timeout occured after ${this.options.timeout.cmd / 1000} seconds.`)
       }, this.options.timeout.cmd);
       // Setup command callback to resolve data parsed
       this.cmdCallback = (data: Array<RespResponse>) => {
-        clearTimeout(timeoutId);
+        if (this.timeoutMultipleCommand) clearTimeout(this.timeoutMultipleCommand);
         resolve(data.map(x => {
           const array = x.contentType === "array" ? (x.content as Array<RespResponse>) : [x];
           return protocol.translateResult(array);
@@ -547,7 +558,13 @@ export class RedisClient implements IRedisClient{
       [...redisCommands.HSET, key, ...fieldVals],
     ];
     return this.commandsInPipeline(cmds)
-      .then(res => Promise.resolve());
+      .then(res => { 
+        if (res[1] && typeof res[1][0] === "number") {
+          return Promise.resolve();
+        } else {
+          return Promise.reject(`Set Object to ${key} failed!`);
+        }
+      });
   }
 
   /**
@@ -556,13 +573,17 @@ export class RedisClient implements IRedisClient{
    * @returns The converted string, if number or date, it will be contered as `number:<1234567>` or `date:<1641725773545>`
    */
   static redisObjFieldVal2Str(v: ObjFieldValue): string | null {
-    if (v === 'null') {
-      return null;
+    if (v === null) {
+      // NOTICE: Here the null conversion is required, because redis cannot accept a `null` as 'value' set to some key.
+      //         So if we need to present some real `null` value in the database, we need to make such conversion.
+      return `null:<null>`;
     } else if ((v instanceof Date) || typeof v === "object") {
       return `date:<${(v as Date).getTime()}>`;
     } else if (typeof v === "number") {
       return `number:<${v as number}>`;
-    } else return v;
+    } else {
+      return v;
+    }
   }
 
   /**
@@ -585,6 +606,8 @@ export class RedisClient implements IRedisClient{
       return parseFloat((reInt.exec(v) as RegExpExecArray)[1]) as number;
     } else if (reDate.test(v)){
       return new Date(parseInt((/^date:<(\d+)>$/.exec(v) as RegExpExecArray)[1]));
+    } else if (v === "null:<null>"){
+      return null;
     } else {
       return v;
     }
@@ -748,13 +771,11 @@ export class RedisClient implements IRedisClient{
         }
       } else if (typeof keys === "string" && typeof values === "string") {
         kvArray.push(keys, values);
-      }
-    } else if (!keys && !values) {
-      // Data passed in with [key, value] pairs
-      if (keyValPairs.length > 0 && keyValPairs.length % 2 === 0) {
-        kvArray.push(...keyValPairs);
-      } else {
-        Promise.reject("Please provide keyValPairs in event count!");
+        if (keyValPairs.length > 0 && keyValPairs.length % 2 === 0) {
+          kvArray.push(...keyValPairs);
+        } else {
+          Promise.reject("Please provide keyValPairs in event count!");
+        }
       }
     } else {
       // Other formats will be rejected.
@@ -1051,11 +1072,9 @@ export class RedisClient implements IRedisClient{
    * @param ltORgt LT (less than) or GT (greater than) option of the `ZADD` command
    * @returns 
    */
-  public zAddToSet(key: string, members: ZsetCollection, nxORxx?: "NX" | "XX", ltORgt?: "LT" | "GT"): Promise<void> {
-    const memScores: (string | number)[] = [];
-    for (let m in members) {
-      memScores.push(members[m], m)
-    }
+  public zAddToSet(key: string, members: ZSetItem[], nxORxx?: "NX" | "XX", ltORgt?: "LT" | "GT"): Promise<void> {
+    if (members.length < 1) return Promise.resolve();
+    const memScores: (string | number)[] = members.map(x => [x.score, x.name]).flat();
     const options: string[] = [];
     if (nxORxx) options.push(nxORxx);
     if (ltORgt) options.push(ltORgt);
@@ -1104,13 +1123,13 @@ export class RedisClient implements IRedisClient{
    * @param count How many items to get
    * @returns The top items got
    */
-  public zGetTopItems(key: string, count: number): Promise<ZsetCollection> {
+  public zGetTopItems(key: string, count: number): Promise<ZSetItem[]> {
     return this.singleCommand(...redisCommands.ZREVRANGE, key, 0, count - 1, 'WITHSCORES')
       .then(res => {
-        const set: ZsetCollection = {};
+        const set: ZSetItem[] = [];
         let idx = 0;
         while (idx < res.length) {
-          set[res[idx] as string] = parseFloat(res[idx + 1] as string);
+          set.push({ name: res[idx] as string, score: parseFloat(res[idx + 1] as string) });
           idx += 2;
         }
         return Promise.resolve(set);
@@ -1123,13 +1142,13 @@ export class RedisClient implements IRedisClient{
    * @param count How many items to get
    * @returns The bottom items got
    */
-  public zGetBottomItems(key: string, count: number): Promise<ZsetCollection> {
+  public zGetBottomItems(key: string, count: number): Promise<ZSetItem[]> {
     return this.singleCommand(...redisCommands.ZRANGE, key, 0, count - 1, "WITHSCORES")
       .then(res => {
-        const set: ZsetCollection = {};
+        const set: ZSetItem[] = [];
         let idx = 0;
         while (idx < res.length) {
-          set[res[idx] as string] = parseFloat(res[idx + 1] as string);
+          set.push({ name: res[idx] as string, score: parseFloat(res[idx + 1] as string) });
           idx += 2;
         }
         return Promise.resolve(set);
@@ -1157,14 +1176,14 @@ export class RedisClient implements IRedisClient{
    * @param scoreMax max score
    * @returns The members matched
    */
-  public zGetItemsWithScoresIn(key: string, scoreMin: number, scoreMax: number): Promise<ZsetCollection> {
+  public zGetItemsWithScoresIn(key: string, scoreMin: number, scoreMax: number): Promise<ZSetItem[]> {
     scoreMax = scoreMax >= scoreMin ? scoreMax : scoreMin;
     return this.singleCommand(...redisCommands.ZRANGEBYSCORE, key, scoreMin, scoreMax, 'WITHSCORES')
       .then(res => {
-        const set: ZsetCollection = {};
+        const set: ZSetItem[] = [];
         let idx = 0;
         while (idx < res.length) {
-          set[res[idx] as string] = parseFloat(res[idx + 1] as string);
+          set.push({ name: res[idx] as string, score: parseFloat(res[idx + 1] as string) });
           idx += 2;
         }
         return Promise.resolve(set);

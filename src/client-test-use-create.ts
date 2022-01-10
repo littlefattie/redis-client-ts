@@ -1,26 +1,54 @@
-import { createClient } from ".";
-import { IRedisClientOptions, ObjFieldValue, ObjInRedis, RedisClient, ZsetCollection } from "./client";
+import { IRedisClientOptions, ObjFieldValue, ObjInRedis, RedisClient, ZSetItem } from "./client";
 import redisCommands from "./commands";
 import protocol from "./protocol";
 
-const createCleint:((options: IRedisClientOptions) => Promise<RedisClient>) = (options: IRedisClientOptions) => {
-  return new Promise((resolve, reject) => {
-    const client = new RedisClient(options, true, true);
-    client.on("error", (err:Error) => {
-      reject(`Error happened when creating the client!\nDetail: ${err.message}`);
-    });
-    client.on("ready", () => {
-      console.log(`The client is ready, ID: ${client.id}`);
-      resolve(client);
-    });
-  })
-}
+// const createClient = (options: IRedisClientOptions): Promise<RedisClient> => {
+//   return new Promise((resolve, reject) => {
+//     const client = new RedisClient(options, true, true);
+//     client.on("error", (err:Error) => {
+//       reject(`Error happened when creating the client!\nDetail: ${err.message}`);
+//     });
+//     client.on("ready", () => {
+//       console.log(`The client is ready, ID: ${client.id}`);
+//       resolve(client);
+//     });
+//   })
+// }
+
+import { createClient } from ".";
 
 const options: IRedisClientOptions = {
     host: 'localhost',
     port: 6379,
   };
 
+
+const testGeneral = async (client:RedisClient) => {
+  const k1 = "tesetkey1";
+  const k2 = "tesetkey2";
+  const k3 = "tesetkey3";
+  const k4 = "tesetkey4";
+
+  console.log(`--------------- Start General Test --------------------------`);
+  await client.set(k1, "yes")
+    .then(() => client.get(k1))
+    .then(val => console.log(`The value returned should be "yes"? ${"yes" === val}`))
+    .then(() => client.mset([k1, k2, k3, k4], ["v1", "v2", "v3", "v4"]))
+    .then(() => client.mget(k1, k2, k3, k4))
+    .then(vals => {
+      console.log(`It should be ${"v1v2v3v4"}? ${"v1v2v3v4" === vals.join("")}`);
+    })
+    .then(() => client.mset(k1, "val1", k2, "val2", k4, "val4"))
+    .then(() => client.mget(k1, k2, k4))
+    .then(vals => {
+      console.log(vals);
+    })
+    .catch(err => console.log(`ERROR on General TEST: ${err}`))
+    .finally(() => {
+      console.log(`General test DONE!`);
+      return client.delete(k1, k2, k3, k4);
+    });
+}
 
 const testCounter = async (client: RedisClient) => {
   const c1 = "test_counter1";
@@ -55,14 +83,18 @@ const testHash = async (client: RedisClient) => {
     birthDate: new Date(),
     motto: "I am the king.我是世界之王。",
     occupation: "coder",
+    nullField: null,
   };
   const date2 = new Date((testObj.birthDate as Date).getTime() + 10000);
   const ktest = "testhashobj";
 
   console.log(`--------------- Start Hash Test --------------------------`);
   await client.setObject(ktest, testObj)
-    .then(() => console.log(`Object successfully set!`))
-    .then(() => client.getObject(ktest))
+    .then(() => {
+      console.log(`Object successfully set!`);
+    })
+    .then(() => { 
+      return client.getObject(ktest) })
     .then(obj => {
       // console.log(obj);
       console.log(`Field Check: name (${testObj.name === obj.name})> original: ${testObj.name} | returned: ${obj.name}`);
@@ -71,6 +103,7 @@ const testHash = async (client: RedisClient) => {
       console.log(`Field Check: birthDate (${(testObj.birthDate as Date).getTime() === (obj.birthDate as Date).getTime()})> original: ${(testObj.birthDate as Date).toISOString()} | returned: ${(obj.birthDate as Date).toISOString()}`);
       console.log(`Field Check: motto (${testObj.motto === obj.motto})> original: ${testObj.motto} | returned: ${obj.motto}`);
       console.log(`Field Check: occupation (${testObj.motto === obj.motto})> original: ${testObj.occupation} | returned: ${obj.occupation}`);
+      console.log(`Field Check: nullField (${testObj.nullField === obj.nullField})> original: ${testObj.nullField} | returned: ${obj.nullField}`);
     })
     .then(() => client.setHashField(ktest, "age", 99))
     .then(() => console.log(`Set hash field DONE!`))
@@ -104,12 +137,12 @@ const testHash = async (client: RedisClient) => {
 
 const testList = async (client: RedisClient) => {
   const l1 = "testList1";
-  const l2 = "testList2";
   const d1 = new Date();
   const d2 = new Date(d1.getTime() + 100000);
   const d3 = new Date(d1.getTime() + 33333);
   const testList: ObjFieldValue[] = [1,2,3, 'a', 'b', 'c', d1, 'e', 'f', d2, d3];
   const tl2: ObjFieldValue[] = ['u', 'v', d3, 'xxx'];
+
   console.log(`--------------- Start List Test --------------------------`);
   await client.writeList(l1, testList)
     .then(() => console.log(`List written to list "${l1}`))
@@ -195,14 +228,14 @@ const testSet = async (client: RedisClient) => {
 
 const testSortedSet = async (client: RedisClient) => {
   const ss1 = "testkeySortedTest1";
-  const set1: ZsetCollection = {
-    tom: 100,
-    kate: 99,
-    john: 120,
-    josef: 23,
-    bobin: 33,
-    bond: 33,
-  }
+  const set1: ZSetItem[] = [
+    {name: "tom", score: 100},
+    {name: "kate", score: 99},
+    {name: "john", score: 120},
+    {name: "josef", score: 23},
+    {name: "bobin", score: 33},
+    {name: "bond", score: 33},
+  ];
 
   console.log(`--------------- Start Sorted Set Test --------------------------`);
   await client.zAddToSet(ss1, set1)
@@ -214,8 +247,32 @@ const testSortedSet = async (client: RedisClient) => {
     .then(count => {
       console.log(`Count correct? ${count === 2}, expected: ${2} | got: ${count}`)
     })
-    .then(() => {
-
+    .then(() => client.zIncrBy(ss1, "bobin", 95))
+    .then(newScore => console.log(`Bobbin's new score should be ${33 + 95}, right ? ${newScore === 33 + 95}`))
+    .then(() => client.zGetTopItems(ss1, 3))
+    .then(items => {
+      console.log(items);
+    })
+    .then(() => client.zGetBottomItems(ss1, 2))
+    .then(items => console.log(items))
+    .then(() => client.zGetRank(ss1, "john"))
+    .then(rank => console.log(`John's rank should be ${5} ? ${4 === rank}`))
+    .then(() => client.zGetItemsWithScoresIn(ss1, 100, 120))
+    .then(items => {
+      console.log(`It should be only "tom" and "john" ? ${items.map(x => `"${x.name}"`).join(" ")}`);
+      console.log(items);
+    })
+    .then(() => client.zGetScoresOfMembers(ss1, ["josef", "bond", "husky"]))
+    .then(scores => {
+      console.log(`Score check 1: josef should be ${23} ? ${23 === scores[0]}`);
+      console.log(`Score check 2: bond should be ${33} ? ${33 === scores[1]}`);
+      console.log(`Score check 3: Husky should be ${null} ? ${null === scores[2]}`);
+    })
+    .then(() => client.zRemoveMembers(ss1, ["kate", "bobin", "husky"]))
+    .then(() => client.zGetScoresOfMembers(ss1, ["bobin", "kate"])) 
+    .then(scores => {
+      console.log(`Kate should be ${null}? ${null === scores[0]}`);
+      console.log(`Bobin should be ${null}? ${null === scores[1]}`);
     })
     .catch(err => console.log(`ERROR in Sorted Set Test: ${err}`))
     .finally(() => {
@@ -225,23 +282,59 @@ const testSortedSet = async (client: RedisClient) => {
 }
 
 const testExpire = async (client: RedisClient) => {
+  const ek1 = "expireTestKey1";
 
+  console.log(`--------------- Start EXPIRE Test --------------------------`);
+  await client.set(ek1, "test expire")
+    .then(() => client.get(ek1))
+    .then(val => console.log(`It should be "test expire" ? ${"test expire" === val}`))
+    .then(() => client.expireAfter(ek1, 5))
+    .then(() => {
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          resolve(true);
+        }, 6000);
+      })
+    })
+    .then(() => client.get(ek1))
+    .then(val => console.log(`It should be null ? ${null === val}`))
+    .then(() => client.set(ek1, "expire at"))
+    .then(() => client.get(ek1))
+    .then(val => console.log(`It should be "expire at" ? ${"expire at" === val}`))
+    .then(() => {
+      const timeToExpire = new Date(new Date().getTime() + 1000);
+      return client.expireAt(ek1, timeToExpire, true);
+    })
+    .then(() => new Promise((resolve, reject) => {
+      setTimeout(() => {
+        resolve(true);
+      }, 1100);
+    }))
+    .then(() => client.get(ek1))
+    .then(val => console.log(`It should be null ? ${null === val}`))
+    .catch(err => console.log(`Error happened when EXPIRE TEST: ${err}`))
+    .finally(() => {
+      console.log("Expire Test Done!");
+      return client.delete(ek1);
+    });
 }
 
 
-
-createCleint(options)
+createClient(options, true)
   .then((client) => {
-    return testCounter(client)
+    return testGeneral(client)
+      .then(() => testCounter(client))
       .then(() => testHash(client))
       .then(() => testList(client))
       .then(() => testSet(client))
       .then(() => testSortedSet(client))
+      .then(() => testExpire(client))
 
       .finally(() => {
         return new Promise((resolve, reject) => {
           setTimeout(() => {
             client.close();
+            console.log(`--------------- Client Test DONE!!! --------------------------`);
             console.log('Client gracefully closed!');
             resolve(true);
           }, 1000);
