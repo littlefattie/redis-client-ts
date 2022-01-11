@@ -140,10 +140,10 @@ export default new RedisClientPool(poolOpts, true);
 
 // moduleA.ts
 import pool from "pool.ts"
-pool.getRedis()
+pool.getClient()
   .then(client => client.get("KK")
     .then(val => console.log(val))
-    .then(() => pool.putRedis(client.id))
+    .then(() => pool.putClient(client.id))
   );
 
 // moduleB.ts
