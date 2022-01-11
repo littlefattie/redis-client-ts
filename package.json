@@ -6,7 +6,7 @@
   "scripts": {
     "build": "npm run clean && tsc",
     "clean": "rm -rf dist/*",
-    "gen-redis-commands": "node tools/get-commonds-from-redis-io.js",
+    "gen-redis-commands": "node tools/get-commands-from-redis-io.js",
     "test": "jest"
   },
   "repository": {
@@ -19,7 +19,7 @@
     "typescript",
     "pool"
   ],
-  "author": "Little Fattie",
+  "author": "Little Fattie <little-fattie@outlook.com>",
   "license": "ISC",
   "devDependencies": {
     "@types/jest": "^27.4.0",
@@ -32,6 +32,7 @@
     "uuid": "^8.3.2"
   },
   "files": [
+    "Changelog.md",
     "dist/",
     "!dist/tests/",
     "!**/*.js.map",
