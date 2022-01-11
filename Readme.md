@@ -143,7 +143,8 @@ import pool from "pool.ts"
 pool.getRedis()
   .then(client => client.get("KK")
     .then(val => console.log(val))
-    .pool.putRedis(client.id));
+    .then(() => pool.putRedis(client.id))
+  );
 
 // moduleB.ts
 import pool from "pool.ts"
@@ -152,6 +153,7 @@ const val = client.get("KK");
 console.log(val);
 pool.putClient(client.id);  
 ```
+And please remember to return (`putClient()`) the client when you have finished the client usage.
 
 ## Client methods
 
@@ -163,5 +165,5 @@ pool.putClient(client.id);
 
 ## Notes
  - The typescript source is also included in the package, please examine it at `${packageRoot}/src/` for why and debugging.
- - To check the whole dev package, please go to `https://github.com/littlefattie/redis-client-ts`
+ - To check the whole dev package, please go to [`https://github.com/littlefattie/redis-client-ts`](https://github.com/littlefattie/redis-client-ts)
 
