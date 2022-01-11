@@ -35,7 +35,13 @@ export class RedisClientPool implements IRedisClientPool {
   private clientOptions: IRedisClientOptions;
 
   public idleClients: string[] = [];
-  public workingClients: string[] = [];
+  // Here use the object/dictionary model instead of list, because of that
+  // The working clients will be removed (when client returned) randomly. If
+  // using list, we have to find the index first, but with using dictionary,
+  // we can simply use `delete obj[k]` to remove the element.
+  public workingClients: {
+    [clientId: string]: number
+  } = {};
 
   private pool: ClientPool = {};
 
@@ -82,10 +88,7 @@ export class RedisClientPool implements IRedisClientPool {
     if (idxInIdle >= 0) {
       this.idleClients.splice(idxInIdle, 1);
     }
-    const idxInWorking = this.workingClients.indexOf(clientId);
-    if (idxInWorking >= 0) {
-      this.workingClients.splice(idxInWorking, 1);
-    }
+    delete this.workingClients[clientId];
     // Close the client before remove
     this.pool[clientId].close();
     // Delete the instance from pool.
@@ -99,42 +102,28 @@ export class RedisClientPool implements IRedisClientPool {
    * @returns Resolved if the client is available.
    */
   public getClient(): Promise<RedisClient> {
-    return new Promise((resolve, reject) => {
-      if (this.idleClients.length > 0) {
-        const cId = this.idleClients.shift() as string;
-        this.workingClients.push(cId);
-        resolve(this.pool[cId]);
-      } else {
-        let clientAssigned = false;
-        // Try create a new connection
-        while(this.connActual < this.connMax && !clientAssigned) {
-          this.addConnection(() => {
-            if (this.idleClients.length > 0) {
-              const cId = this.idleClients.shift() as string;
-              this.workingClients.push(cId);
-              console.log(`Client with ID ${cId} is return for use!`);
-              resolve(this.pool[cId]);
-              clientAssigned = true;
-            }
-          })
-        }
-        if (this.connActual >= this.connMax && !clientAssigned) {
-          reject(`ERR: sorry, all ${this.connMax} Connections are all occupied, please consider raise the max connection limit!`)
-        }
-      }
-    });
+    if (this.idleClients.length > 0) {
+      const cId = this.idleClients.shift() as string;
+      this.workingClients[cId] = 1;
+      return Promise.resolve(this.pool[cId]);
+    } else if (this.connActual >= this.connMax) {
+      return Promise.reject(`ERR: sorry, all ${this.connMax} Connections are all occupied, please consider raise the max connection limit!`)
+    } else {
+      return this.createConnection()
+        .then(() => this.getClient());
+    }
   }
 
   /**
-   * Put back the client that is not going to use, return it to pool, and make it idle.
+   * Put back the client that is not going to be used, return it to pool, and make it idle.
    * @param clientId Id of the client that is returned back.
    */
   public putClient(clientId: string): void {
-    const idxInWorking = this.workingClients.indexOf(clientId);
-    if (idxInWorking >= 0) {
-      this.workingClients.splice(idxInWorking, 1);
+    if (this.workingClients[clientId]) {
+      delete this.workingClients[clientId];
       if (this.idleClients.indexOf(clientId) < 0) {
         this.idleClients.push(clientId);
+        console.log(`Client with ID ${clientId} has been returned!`);
       }
     } else {
       if (clientId in this.pool) {
@@ -154,38 +143,76 @@ export class RedisClientPool implements IRedisClientPool {
     }
   }
 
-  /**
-   * Add one client using the default options.
-   * @param cb_ready The callback of the client when it gets ready.
-   */
-  private addConnection(cb_ready?: () => void) {
-    const client = new RedisClient(this.clientOptions, true, true);
-    // add the new client to pool, whatever what its state is
-    this.pool[client.id] = client;
-    this.connActual++;
+  // /**
+  //  * Add one client using the default options.
+  //  * @param cb_ready The callback of the client when it gets ready.
+  //  */
+  // private addConnection(cb_ready?: () => void) {
+  //   const client = new RedisClient(this.clientOptions, true, true);
+  //   // add the new client to pool, whatever what its state is
+  //   this.pool[client.id] = client;
+  //   this.connActual++;
 
-    client.on("error", (err: Error) => {
-      console.log(`Error happened: ${err.message}`);
-      // Remove the client from pool
-      this.removeClient(client.id);
-    });
-    client.on("close", (hadError: boolean) => {
-      // Remove the client after the client is closed
-      this.removeClient(client.id);
-    });
-    client.on("ready", () => {
-      // Put the client into idle array if it is ready
-      this.idleClients.push(client.id);
-      console.log(`New client ready, id: ${client.id}`);
-      if (cb_ready && typeof cb_ready === "function") {
-        cb_ready();
-      }
-      // Set Timeout
-      client.on("timeout", () => {
-        if (this.idleClients.length > this.connMin) {
-          this.removeClient(client.id);
-        }
-      })
+  //   client.on("error", (err: Error) => {
+  //     console.log(`Error happened: ${err.message}`);
+  //     // Remove the client from pool
+  //     this.removeClient(client.id);
+  //   });
+  //   client.on("close", (hadError: boolean) => {
+  //     // Remove the client after the client is closed
+  //     this.removeClient(client.id);
+  //   });
+  //   client.on("ready", () => {
+  //     // Put the client into idle array if it is ready
+  //     this.idleClients.push(client.id);
+  //     console.log(`New client ready, id: ${client.id}`);
+  //     if (cb_ready && typeof cb_ready === "function") {
+  //       cb_ready();
+  //     }
+  //     // Set Timeout
+  //     client.on("timeout", () => {
+  //       if (this.idleClients.length > this.connMin) {
+  //         this.removeClient(client.id);
+  //       }
+  //     })
+  //   });
+  // }
+
+  /**
+   * Create a new connection and ensure it is ready, return as Promise.
+   * @returns The client in ready state
+   */
+  private createConnection(): Promise<RedisClient> {
+    return new Promise((resolve, reject) => {
+      // Create client, with auto-connect, ensure-ready and in-pool all enabled
+      const client = new RedisClient(this.clientOptions, true, true, true);
+      // Add the new client to pool, whatever what its state is
+      this.pool[client.id] = client;
+      this.connActual++;
+      // Assign on-close hanlder
+      client.on("close", (hadError: boolean) => {
+        console.log(`Client ${client.id} has been closed!`);  
+      });
+
+      let clientReady: boolean = false;
+      client.on("error", (err: Error) => {
+        this.removeClient(client.id);
+        if (!clientReady) {
+          reject(`Error happened when creating the client!\n --> Detail: ${err.message}`);
+        }});
+      
+      client.on("ready", () => {
+        clientReady = true;
+        // Push to idle set
+        this.idleClients.push(client.id);
+        client.on("timeout", () => {
+          // When Idle timeout event happens, remove the client that is idle
+          if (this.idleClients.length > this.connMin) {
+            this.removeClient(client.id);
+          }
+        })
+        resolve(client);
+      });
     });
   }
 
@@ -194,7 +221,7 @@ export class RedisClientPool implements IRedisClientPool {
    */
   private cleanPool() {
     for (const cId in this.pool) {
-      if (!this.idleClients.includes(cId) && !this.workingClients.includes(cId)) {
+      if (!this.idleClients.includes(cId) && !this.workingClients[cId]) {
         // Because there might be in case that the client is created, but not ready.
         // in this way, we are not going remove it, and it will be available in idle array and be ready after some tick.
         if (this.pool[cId].state !== RedisClient.states.CREATED) {
@@ -209,10 +236,17 @@ export class RedisClientPool implements IRedisClientPool {
    * Start connections to make sure actual connections are above the `min_conn`.
    */
   public startMinConnections(): void {
-    while (this.connActual < this.connMin) {
-      this.addConnection(() => {
-        console.log(`The pool has a new connection ready, at ${new Date().toISOString()}`);
-      })
+    if (this.connActual < this.connMin) {
+      const connNeedToCreate = this.connMin - this.connActual;
+      const newConns = [...Array(connNeedToCreate).keys()]
+        .map(n => this.createConnection());
+      Promise.allSettled(newConns)
+        .then(res => {
+          const failedNewConnection = res.filter(x => x.status === "rejected").length;
+          if (failedNewConnection > 0) {
+            console.log(`There are some ${failedNewConnection} connection(s) failed!`)
+          }
+        });
     }
   }
 
@@ -221,7 +255,7 @@ export class RedisClientPool implements IRedisClientPool {
    * @returns If operation successful
    */
   public offLoadAll(): boolean {
-    if (this.workingClients.length > 0) {
+    if (Object.keys(this.workingClients).length > 0) {
       console.log(`There are some clients still working! Could not offload all!`);
       return false;
     }

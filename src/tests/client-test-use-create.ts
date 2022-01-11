@@ -1,21 +1,8 @@
-import { IRedisClientOptions, ObjFieldValue, ObjInRedis, RedisClient, ZSetItem } from "./client";
-import redisCommands from "./commands";
-import protocol from "./protocol";
+import { IRedisClientOptions, ObjFieldValue, ObjInRedis, RedisClient, ZSetItem } from "../client";
+import redisCommands from "../commands";
+import protocol from "../protocol";
 
-// const createClient = (options: IRedisClientOptions): Promise<RedisClient> => {
-//   return new Promise((resolve, reject) => {
-//     const client = new RedisClient(options, true, true);
-//     client.on("error", (err:Error) => {
-//       reject(`Error happened when creating the client!\nDetail: ${err.message}`);
-//     });
-//     client.on("ready", () => {
-//       console.log(`The client is ready, ID: ${client.id}`);
-//       resolve(client);
-//     });
-//   })
-// }
-
-import { createClient } from ".";
+import { createClient } from "../";
 
 const options: IRedisClientOptions = {
     host: 'localhost',

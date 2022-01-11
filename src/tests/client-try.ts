@@ -1,19 +1,7 @@
-import { IRedisClientOptions, RedisClient } from "./client";
-import redisCommands from "./commands";
-import protocol from "./protocol";
-
-const createCleint:((options: IRedisClientOptions) => Promise<RedisClient>) = (options: IRedisClientOptions) => {
-  return new Promise((resolve, reject) => {
-    const client = new RedisClient(options, true, true);
-    client.on("error", (err:Error) => {
-      reject(`Error happened when creating the client!\nDetail: ${err.message}`);
-    });
-    client.on("ready", () => {
-      console.log(`The client is ready, ID: ${client.id}`);
-      resolve(client);
-    });
-  })
-}
+import { IRedisClientOptions, RedisClient } from "../client";
+import redisCommands from "../commands";
+import protocol from "../protocol";
+import { createClient } from "../";
 
 const options: IRedisClientOptions = {
     host: 'localhost',

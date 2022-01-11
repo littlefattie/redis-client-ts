@@ -15,9 +15,9 @@
   },
   "keywords": [
     "redis",
-    "redis-client",
+    "client",
     "typescript",
-    "pooled"
+    "pool"
   ],
   "author": "Little Fattie",
   "license": "ISC",
@@ -30,5 +30,12 @@
   },
   "dependencies": {
     "uuid": "^8.3.2"
-  }
+  },
+  "files": [
+    "dist/",
+    "!dist/tests/",
+    "!**/*.js.map",
+    "src/",
+    "!src/tests/"
+  ]
 }

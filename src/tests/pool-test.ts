@@ -1,4 +1,4 @@
-import { RedisClientPool } from ".";
+import { RedisClientPool } from "../";
 
 const pool = new RedisClientPool( {
   host: "127.0.0.1",
@@ -7,17 +7,17 @@ const pool = new RedisClientPool( {
   connMax: 15,
 }, true);
 
-const pollInfoHanlder = setInterval(() => {
-  console.clear();
+const poolInfoHanlder = setInterval(() => {
+  // console.clear();
   console.log(`
   POOL INFO:                    at ${new Date().toLocaleTimeString()}
   ---------------------------------------------
   connections:      ${pool.connActual}
-  working:          ${pool.workingClients.length}
+  working:          ${Object.keys(pool.workingClients).length}
   idle:             ${pool.idleClients.length}
   ----------------------------------------------
-  `)
-}, 10000);
+  `);
+}, 3000);
 
 const rootPromise = new Promise((res, rej) => {
   setTimeout(() => {
@@ -69,7 +69,8 @@ rootPromise
   .then(c => {
     console.log(` 8 - Client ID: ${c.id}`);
     clientIds.push(c.id);
-    return pool.getClient();
+    return c.set('pool-test', 'Pool-test-value-hello-baby!')
+      .then(() => pool.getClient());
   })
   .then(c => {
     console.log(` 9 - Client ID: ${c.id}`);
@@ -122,7 +123,7 @@ rootPromise
           } else {
             clearInterval(putClientIntervalId);
           }
-        }, 12000)
+        }, 2900)
       })
   });
 

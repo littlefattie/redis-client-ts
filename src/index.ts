@@ -9,7 +9,7 @@ const createClient = (options?: IRedisClientOptions, ensureReady?:boolean): Prom
   return ensureReady
     ? new Promise((resolve, reject) => {
         const client = new RedisClient(options, true, true);
-        client.on("error", (err:Error) => {
+        client.on("error", (err: Error) => {
           reject(`Error happened when creating the client!\n --> Detail: ${err.message}`);
         });
         client.on("ready", () => {
