@@ -1963,7 +1963,7 @@ export default {
 /**
  * The redis commands organized in categories. 
  */
-export const redisCommandsInCatgory = {
+export const redisCommandsInCategory = {
 
   server: {
     /**

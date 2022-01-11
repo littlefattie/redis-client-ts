@@ -216,6 +216,11 @@ export class RedisClient implements IRedisClient{
     this.copyOptions(options);
   }
 
+  /**
+   * Create socket by start connection
+   * @param options Options of the client, will be used to make socket connection
+   * @param ensureReady A flag to indicate if ensure ready check when making the connection
+   */
   public connect(options?: IRedisClientOptions, ensureReady?: boolean): void {
     // Close before connect, this will issue an Re-Connect actually
     this.close();
@@ -266,6 +271,9 @@ export class RedisClient implements IRedisClient{
     });
   }
 
+  /**
+   * Close the socket
+   */
   public close(): void {
     // Clear Command timeouts if any
     if (this.timeoutRawCommand) clearTimeout(this.timeoutRawCommand);
@@ -279,6 +287,10 @@ export class RedisClient implements IRedisClient{
     }
   }
   
+  /**
+   * Test the socket connection by sending PING command.
+   * @returns Resolve if test successful
+   */
   public testConnection(): Promise<void> {
     if (this.state !== RedisClient.states.CONNECTED && this.state !== RedisClient.states.READY) {
       return Promise.reject("Client not connected!");
@@ -293,6 +305,12 @@ export class RedisClient implements IRedisClient{
       })
   }
 
+  /**
+   * Make auth for the connection.
+   * @param password The password for AUTH
+   * @param username The username for AUTH
+   * @returns Resolve if AUTH successful
+   */
   public auth(password?: string, username?:string): Promise<void> {
     const pwd = password ?? this.options.password;
     const name = username ?? this.options.username;
@@ -311,6 +329,9 @@ export class RedisClient implements IRedisClient{
       });
   }
 
+  /**
+   * Check if this client is ready or not.
+   */
   public isReady(): Promise<void> {
     if (this.state === RedisClient.states.READY) {
       return Promise.resolve();
@@ -321,6 +342,11 @@ export class RedisClient implements IRedisClient{
       });
   }
 
+  /**
+   * Attach event listeners for socket or this module.
+   * @param event Event name
+   * @param listener Event listener
+   */
   public on(event: "error", listener: (err: Error) => void): void;
   public on(event: "close", listener: (hadError: boolean) => void): void;
   public on(event: "end", listener: () => void): void;
@@ -348,6 +374,11 @@ export class RedisClient implements IRedisClient{
     }
   }
 
+  /**
+   * Get response from Server in RESP protocol format.
+   * @param cmds Redis commands presented in array
+   * @returns The response from redis server, in RESP protocol format
+   */
   public rawCommand(...cmds: RespCommand): Promise<RespResponse[]> {
     if (this.state !== RedisClient.states.CONNECTED  && this.state !== RedisClient.states.READY) {
       return Promise.reject("The client is not ready!");
@@ -369,6 +400,11 @@ export class RedisClient implements IRedisClient{
     });
   }
 
+  /**
+   * Send multiple commands to Redis server and got RAW response
+   * @param cmds The multiple commands
+   * @returns RESP response in array
+   */
   public rawCommandInPipeLine(cmds: RespCommand[]): Promise<RespResponse[]> {
     if (this.state !== RedisClient.states.READY) {
       return Promise.reject("Client is not in READY state!");
@@ -391,6 +427,11 @@ export class RedisClient implements IRedisClient{
     });
   }
 
+  /**
+   * Send a command to Redis server and get response, with pure content returned.
+   * @param cmds Redis commands
+   * @returns The response content of this command
+   */
   public singleCommand(...cmds: RespCommand): Promise<RespArrayElement[]> {
     if (this.state !== RedisClient.states.READY) {
       return Promise.reject("Client is not in READY state!");
@@ -424,6 +465,11 @@ export class RedisClient implements IRedisClient{
     });
   }
 
+  /**
+   * Send multiple commands to Redis server and get response
+   * @param cmds The multiple commands
+   * @returns The response content presented in array
+   */
   public commandsInPipeline(cmds: RespCommand[]): Promise<RespArrayElement[][]> {
     if (this.state !== RedisClient.states.READY) {
       return Promise.reject("Client is not in READY state!");
