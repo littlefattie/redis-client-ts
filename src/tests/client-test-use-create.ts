@@ -84,6 +84,7 @@ const testHash = async (client: RedisClient) => {
       return client.getObject(ktest) })
     .then(obj => {
       // console.log(obj);
+      obj =  <{[key: string]: ObjFieldValue }>obj;
       console.log(`Field Check: name (${testObj.name === obj.name})> original: ${testObj.name} | returned: ${obj.name}`);
       console.log(`Field Check: userID (${testObj.userID === obj.userID})> original: ${testObj.userID} | returned: ${obj.userID}`);
       console.log(`Field Check: age (${testObj.age === obj.age})> original: ${testObj.age} | returned: ${obj.age}`);
@@ -115,6 +116,10 @@ const testHash = async (client: RedisClient) => {
       const fDiffObj = testObjKeys.filter(k => !fields.includes(k));
       console.log(`Fields Check: (${fDiffReturned.length === 0 && fDiffObj.length === 0})> testobj: ${testObjKeys.join("|")} | returned: ${fields.join("|")}`);
     })
+    .then(() => client.getObject("SomeKeyNotExisting"))
+    .then(obj => {
+      console.log(`The obj should be null ? ${obj === null}`);
+    })
     .catch(err => console.log(`HASH TEST ERROR: ${err}`))
     .finally(() => {
       console.log(`HASH test DONE!`);
@@ -127,7 +132,7 @@ const testList = async (client: RedisClient) => {
   const d1 = new Date();
   const d2 = new Date(d1.getTime() + 100000);
   const d3 = new Date(d1.getTime() + 33333);
-  const testList: ObjFieldValue[] = [1,2,3, 'a', 'b', 'c', d1, 'e', 'f', d2, d3];
+  const testList: ObjFieldValue[] = [1,2,3, 'a', 'b', 'c', d1, 'e', 'f', d2, d3, null, 'g'];
   const tl2: ObjFieldValue[] = ['u', 'v', d3, 'xxx'];
 
   console.log(`--------------- Start List Test --------------------------`);

@@ -21,6 +21,8 @@ export interface IRedisClientPool {
   startMinConnections(): void;
   offLoadAll(): boolean;
   flushAndReStart(): void;
+
+  shutdown(): void;
 }
 
 type ClientPool = {
@@ -83,7 +85,7 @@ export class RedisClientPool implements IRedisClientPool {
    * @param clientId The id of the client that is going to be removed
    */
   public removeClient(clientId: string): void {
-    // Remove the client, whenever the client is in idle queue or working queue    
+    // Remove the id copy in idle queue
     const idxInIdle = this.idleClients.indexOf(clientId);
     if (idxInIdle >= 0) {
       this.idleClients.splice(idxInIdle, 1);
@@ -143,41 +145,6 @@ export class RedisClientPool implements IRedisClientPool {
     }
   }
 
-  // /**
-  //  * Add one client using the default options.
-  //  * @param cb_ready The callback of the client when it gets ready.
-  //  */
-  // private addConnection(cb_ready?: () => void) {
-  //   const client = new RedisClient(this.clientOptions, true, true);
-  //   // add the new client to pool, whatever what its state is
-  //   this.pool[client.id] = client;
-  //   this.connActual++;
-
-  //   client.on("error", (err: Error) => {
-  //     console.log(`Error happened: ${err.message}`);
-  //     // Remove the client from pool
-  //     this.removeClient(client.id);
-  //   });
-  //   client.on("close", (hadError: boolean) => {
-  //     // Remove the client after the client is closed
-  //     this.removeClient(client.id);
-  //   });
-  //   client.on("ready", () => {
-  //     // Put the client into idle array if it is ready
-  //     this.idleClients.push(client.id);
-  //     console.log(`New client ready, id: ${client.id}`);
-  //     if (cb_ready && typeof cb_ready === "function") {
-  //       cb_ready();
-  //     }
-  //     // Set Timeout
-  //     client.on("timeout", () => {
-  //       if (this.idleClients.length > this.connMin) {
-  //         this.removeClient(client.id);
-  //       }
-  //     })
-  //   });
-  // }
-
   /**
    * Create a new connection and ensure it is ready, return as Promise.
    * @returns The client in ready state
@@ -189,7 +156,7 @@ export class RedisClientPool implements IRedisClientPool {
       // Add the new client to pool, whatever what its state is
       this.pool[client.id] = client;
       this.connActual++;
-      // Assign on-close hanlder
+      // Assign on-close handler
       client.on("close", (hadError: boolean) => {
         console.log(`Client ${client.id} has been closed!`);  
       });
@@ -276,4 +243,16 @@ export class RedisClientPool implements IRedisClientPool {
     }
   }
 
+  /**
+   * This is a command to close all the clients forcedly, whatever the state of the client is,
+   * just blindly close the client and remove it.
+   * This should be ONLY called when the app is shutting down and cleaning the running fields.
+   */
+  public shutdown(): void {
+    this.workingClients = {};
+    this.idleClients = [];
+    for (let cId in this.pool) {
+      this.removeClient(cId);
+    }
+  }
 }

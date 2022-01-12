@@ -26,7 +26,7 @@ export type ObjFieldValue = string | number | Date | null;
 
 export type ObjInRedis = {
   [key: string]: ObjFieldValue;
-}
+} | null;
 export interface ZSetItem {
   name: string;
   score: number;
@@ -588,15 +588,14 @@ export class RedisClient implements IRedisClient{
    * @returns A promise to signal whether action successful
    */
   public setObject(key: string, obj: ObjInRedis): Promise<void> {
-    const fieldVals: RespCommand = [];
-    for (let k in obj) {
+    if (obj === null) return Promise.resolve();
+    const objKeys = Object.keys(obj);
+    if (objKeys.length < 1) return Promise.resolve();
       // If the field value is Date, then convert it to a string in the format of
-      // `date:<nnnnnnn>` where `nnnnnnn` is the milisec timestamp returned by the funciton of `getTime`.
+      // `date:<nnnnnnn>` where `nnnnnnn` is the milisec timestamp returned by the function of `getTime`.
       // It will also make some conversion for numbers, which will has the format of `number:<nnnn>`.
-      // And when read back, this operation will be re-verted.
-      const fVal = RedisClient.redisObjFieldVal2Str(obj[k]);
-      fieldVals.push(k, fVal);
-    }
+      // And when read back, this operation will be reverted.
+    const fieldVals: RespCommand = objKeys.map(k => [k, RedisClient.redisObjFieldVal2Str(obj[k])]).flat();
     const cmds: RespCommand[] = [
       // Delete any current existing on this key
       [...redisCommands.DEL, key],
@@ -614,9 +613,9 @@ export class RedisClient implements IRedisClient{
   }
 
   /**
-   * The ultility function to convert obj field value to string which will be stored in Redis
+   * The utility function to convert obj field value to string which will be stored in Redis
    * @param v The Object field value, could be a string, a number, or a Date
-   * @returns The converted string, if number or date, it will be contered as `number:<1234567>` or `date:<1641725773545>`
+   * @returns The converted string, if number or date, it will be converted as `number:<1234567>` or `date:<1641725773545>`
    */
   static redisObjFieldVal2Str(v: ObjFieldValue): string | null {
     if (v === null) {
@@ -679,6 +678,8 @@ export class RedisClient implements IRedisClient{
             resObj[k] = RedisClient.str2RedisObjFieldVal(v);
             idx += 2;
           }
+        } else {
+          resObj = null;
         }
         return resObj;
       });
