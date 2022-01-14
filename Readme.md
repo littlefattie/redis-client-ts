@@ -19,6 +19,7 @@ console.log(RedisCommands.CLIENT_GETNAME);
 // This will print ["MSET"]
 console.log(RedisCommands.MSET);
 ```
+
 The commands also are provided in categories, you can access by importing another name:
 ```ts
 import { redisCommandsInCategory } from "@littlefattie/redis-client-ts/dist/commands";
@@ -28,13 +29,16 @@ console.log(redisCommandsInCategory.connection.CLIENT_GETNAME);
 // This will print ["MSET"]
 console.log(redisCommandsInCategory.string.MSET);
 ```
+
 The script of generating the commands is also provided as a tool, please find it at `${packageroot}/tools/get-commands-from-redis-io.js`
 
 In your package, you can run 
+
 ```shell
 node ./node_modules/@littlefattie/redis-client-ts/tools/get-commands-from-redis-io.js
 ```
 to generate a new commands list from `https://redis.io`, the file will be saved to `src/commands.ts` to your package.
+
 ## Usage - Client
 
 By default, the import action of this package will generate a client, but it is not initialized, well configured, connected, or tested. You can do it like this:
@@ -98,7 +102,7 @@ if (redis) {
 import redis from "RedisClient.ts"
 
 redis.set("KK", "I am the King!")
-  .then(console.log("Yes, you are the King!"));
+  .then(() => console.log("Yes, you are the King!"));
 ```
 
 With this implementation, you will get the ready client if the promise `Resolved`.
@@ -106,7 +110,6 @@ With this implementation, you will get the ready client if the promise `Resolved
 And surely without any wrapper, you are free to use the `createClient` function to make your own clients, and you use it in a make-use-destroy way. Like this:
 
 ```ts
-
 createClient({}, true)
   .then(client => client.set("KK", "King is King!")
     .then(() => client.get("KK"))
@@ -153,6 +156,7 @@ const val = client.get("KK");
 console.log(val);
 pool.putClient(client.id);  
 ```
+
 And please remember to return (`putClient()`) the client when you have finished the client usage.
 
 ## Client methods
