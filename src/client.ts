@@ -102,6 +102,10 @@ export interface IRedisClient {
   removeListItemAt(key: string, index: number): Promise<void>;
   addToList(key: string, items: ObjFieldValue[], position?: "prepend" | "append" | "atindex", index?: number): Promise<void>;
   findItemInList(key: string, item: ObjFieldValue): Promise<number[]>;
+  listGetFirst(key: string): Promise<ObjFieldValue>;
+  listGetLast(key: string): Promise<ObjFieldValue>;
+  listShift(key: string): Promise<ObjFieldValue>;
+  listPop(key: string): Promise<ObjFieldValue>;
 
   // Set Actions
   addToSet(key: string, items: (string | number)[]): Promise<void>;
@@ -1091,7 +1095,6 @@ export class RedisClient implements IRedisClient{
       });
   }
 
-
   /**
    * Find ALL the occurrance of certain item specified.
    * @param key Name of the list
@@ -1106,6 +1109,46 @@ export class RedisClient implements IRedisClient{
         return this.singleCommand(...redisCommands.LPOS, key, RedisClient.redisObjFieldVal2Str(item), 'COUNT', llen)
           .then(res => Promise.resolve(res as number[]));
       });
+  }
+
+  /**
+   * Get the first element of a list.
+   * @param key Name of the list
+   * @returns The first element of the list
+   */
+  public listGetFirst(key: string): Promise<ObjFieldValue> {
+    return this.singleCommand(...redisCommands.LINDEX, key, 0)
+      .then(res => RedisClient.str2RedisObjFieldVal(res[0] as string));
+  }
+
+  /**
+   * Get the last element of a list
+   * @param key Name of the list
+   * @returns The last element of the list
+   */
+  public listGetLast(key: string): Promise<ObjFieldValue> {
+    return this.singleCommand(...redisCommands.LINDEX, key, -1)
+      .then(res => RedisClient.str2RedisObjFieldVal(res[0] as string));
+  }
+
+  /**
+   * The command mapping for list `shift`
+   * @param key Name of the list
+   * @returns Remove the first element of the list and return it
+   */
+  public listShift(key: string): Promise<ObjFieldValue> {
+    return this.singleCommand(...redisCommands.LPOP, key)
+      .then(res => RedisClient.str2RedisObjFieldVal(res[0] as string));
+  }
+
+  /**
+   * The command mapping ofr list `pop`
+   * @param key Name of the list
+   * @returns Remove the last element of the list and return it.
+   */
+  public listPop(key: string): Promise<ObjFieldValue> {
+    return this.singleCommand(...redisCommands.RPOP, key)
+      .then(res => RedisClient.str2RedisObjFieldVal(res[0]  as string));
   }
 
   /**

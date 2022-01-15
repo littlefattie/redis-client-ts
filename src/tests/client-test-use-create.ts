@@ -181,6 +181,32 @@ const testList = async (client: RedisClient) => {
     .then(list => console.log(list))
     .then(() => client.findItemInList(l1, "xxx"))
     .then(pos => console.log(pos))
+    .then(() => client.listGetFirst(l1))
+    .then(val => {
+      console.log(`it should be "u" ? ${val === 'u'}`);
+      return client.listGetLast(l1);
+    })
+    .then(val => {
+      console.log(`it should be "xxx" ? ${val === 'xxx'}`);
+      return client.listShift(l1);
+    })
+    .then(val => {
+      console.log(`it should be "u" ? ${val === 'u'}`);
+      return client.listShift(l1);
+    })
+    .then(val => {
+      console.log(`it should be "v" ? ${val === 'v'}`);
+      return client.listPop(l1);
+    })
+    .then(val => {
+      console.log(`it should be "xxx" ? ${val === 'xxx'}`);
+      return client.listPop(l1);
+    })
+    .then(val => {
+      console.log(`It  should be a date ? ${val instanceof Date} | ${val}`);
+      return client.readList(l1);
+    })
+    .then(list => console.log(list))
     .catch(err => console.log(`List Test Error: ${err}`))
     .finally(() => {
       console.log("List test DONE!");

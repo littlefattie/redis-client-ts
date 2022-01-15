@@ -1,6 +1,7 @@
 # v1.0.2
 
 - Added the quick command of `getServerInfo` to retrieve the running info of Redis server
+- Added more quick command for list, they are: `listGetFirst` / `listGetLast` pair, and `listShift` / `listPop` pair
 
 # v1.0.1
 
