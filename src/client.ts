@@ -63,6 +63,8 @@ export interface IRedisClient {
   // Abstracted commands
   // Delete
   delete(...keys: string[]): Promise<void>;
+  // GetServerInfo
+  getServerInfo(): Promise<{ [section: string]: ObjInRedis }>;
 
   // Counter commands
   incr(counter: string): Promise<number>;
@@ -507,6 +509,44 @@ export class RedisClient implements IRedisClient{
   public delete(...keys: string[]): Promise<void> {
     return this.singleCommand(...redisCommands.DEL, ...keys)
       .then(res => Promise.resolve());
+  }
+
+  /**
+   * Get the running info of the server by sending `INFO` command.
+   * @returns The server info returned, presented in a object.
+   */
+  public getServerInfo(): Promise<{ [section: string]: ObjInRedis }> {
+    return this.singleCommand(...redisCommands.INFO)
+      .then(res => {
+        const infoStr = res[0] as string;
+        const sections = infoStr.split("#")
+          .map(x => x.trim())
+          .filter(x => x.length > 0)
+          .map(x => {
+            const secLines = x.split("\r\n")
+              .map(y => y.trim())
+              .filter(y => y.length > 0);
+            const posTitleEnd = x.indexOf(" ");
+            const secTitle =secLines[0];
+            const secBody = secLines.slice(1)
+              .map(y => y.split(":")
+                .map(z => z.trim())
+                .map((z, i) => i === 0 ? z.replace(/_/g, " ") : z)
+              );
+            const secObj: ObjInRedis = {};
+            for (let x of secBody) {
+              secObj[x[0]] = x[1];
+            }
+            return [secTitle, secObj];
+          });
+        const infoObj:{
+          [section: string]: ObjInRedis
+        } = {};
+        for (let x of sections) {
+          infoObj[x[0] as string] = x[1] as ObjInRedis;
+        }
+        return Promise.resolve(infoObj);
+      });
   }
 
   /**

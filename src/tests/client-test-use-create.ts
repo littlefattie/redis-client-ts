@@ -45,6 +45,8 @@ const testCounter = async (client: RedisClient) => {
     .then(c => {
       console.log(`Counter should be: 1789, right ? ${c === 1789}, returned is ${c}.`);
     })
+    .then(() => client.getServerInfo())
+    .then(info => console.log(info))
     .then(() => client.incr(c1))
     .then(c => console.log(`Counter should be: 1790, right ? ${c === 1790}, returned is ${c}.`))
     .then(() => client.incrBy(c1, 23))
