@@ -632,14 +632,18 @@ export class RedisClient implements IRedisClient{
    * @returns A promise to signal whether action successful
    */
   public setObject(key: string, obj: ObjInRedis): Promise<void> {
-    if (obj === null) return Promise.resolve();
+    if (!obj) return Promise.resolve();
     const objKeys = Object.keys(obj);
     if (objKeys.length < 1) return Promise.resolve();
-      // If the field value is Date, then convert it to a string in the format of
-      // `date:<nnnnnnn>` where `nnnnnnn` is the milisec timestamp returned by the function of `getTime`.
-      // It will also make some conversion for numbers, which will has the format of `number:<nnnn>`.
-      // And when read back, this operation will be reverted.
-    const fieldVals: RespCommand = objKeys.map(k => [k, RedisClient.redisObjFieldVal2Str(obj[k])]).flat();
+    // If the field value is Date, then convert it to a string in the format of
+    // `date:<nnnnnnn>` where `nnnnnnn` is the milisec timestamp returned by the function of `getTime`.
+    // It will also make some conversion for numbers, which will has the format of `number:<nnnn>`.
+    // And when read back, this operation will be reverted.
+    // If some field is undefined, then it is not included in the HSET command  
+    const fieldVals: RespCommand = objKeys
+      .filter(k => obj[k] !== undefined)
+      .map(k => [k, RedisClient.redisObjFieldVal2Str(obj[k])])
+      .flat();
     const cmds: RespCommand[] = [
       // Delete any current existing on this key
       [...redisCommands.DEL, key],

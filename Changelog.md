@@ -2,7 +2,7 @@
 
 - Added the quick command of `getServerInfo` to retrieve the running info of Redis server
 - Added more quick command for list, they are: `listGetFirst` / `listGetLast` pair, and `listShift` / `listPop` pair
-
+- Fixed one bug that `setObject` will fail when some field is set to value `undefined`. Now the `undefined` field will not sent to Redis
 # v1.0.1
 
 - Some improvement in `client.setObject` and `client.getObject` function
