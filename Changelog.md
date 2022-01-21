@@ -1,3 +1,8 @@
+# v1.0.3
+
+- Added the function of `getKeysOfPattern`, which will be simpler to find keys by pattern.
+
+
 # v1.0.2
 
 - Added the quick command of `getServerInfo` to retrieve the running info of Redis server

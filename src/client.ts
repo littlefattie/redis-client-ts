@@ -90,6 +90,7 @@ export interface IRedisClient {
   mset(...keyValPairs: string[]): Promise<void>;
 
   // Key related
+  getKeysOfPattern(keyPattern: string): Promise<string[]>;
   hasKey(keyPattern: string): Promise<boolean>;
   keyExists(key: string): Promise<boolean>;
   keyAllExists(keys: string[]): Promise<boolean>;
@@ -623,7 +624,7 @@ export class RedisClient implements IRedisClient{
   /**
    * A easy and convenient function to store a whole object ({[k]: v}) into Redis.
    * @param key The key of the Hash set in Redis, i.e. the `Name` of this object going to be saved as.
-   * @param obj The Object being stored in to Resis. e.g.
+   * @param obj The Object being stored in to Redis. e.g.
    * obj = {
    *   n: 33,
    *   s: 'Tom',
@@ -882,6 +883,16 @@ export class RedisClient implements IRedisClient{
     } else {
       return Promise.resolve();
     }
+  }
+
+  /**
+   * Get all the keys that match the pattern given.
+   * @param keyPattern The keys querying pattern, like '*', same as the "KEYS"
+   * @returns The keys returned.
+   */
+  public getKeysOfPattern(keyPattern: string): Promise<string[]> {
+    return this.singleCommand(...redisCommands.KEYS, keyPattern)
+      .then(keys => Promise.resolve(keys as string[]))
   }
 
   /**
