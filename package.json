@@ -1,6 +1,6 @@
 {
   "name": "@littlefattie/redis-client-ts",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "The Redis client written in Typescript. It supports object write/read, list read/write, and number/string atomic operation, user-friendly and intuitive.",
   "main": "dist/index.js",
   "scripts": {
