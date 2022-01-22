@@ -1,7 +1,7 @@
 # v1.0.3
 
 - Added the function of `getKeysOfPattern`, which will be simpler to find keys by pattern.
-
+- Fixed a bug in function `client.keyExists`
 
 # v1.0.2
 

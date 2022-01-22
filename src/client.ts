@@ -912,7 +912,7 @@ export class RedisClient implements IRedisClient{
    */
   public keyExists(key: string): Promise<boolean> {
     return this.singleCommand(...redisCommands.EXISTS, key)
-      .then(res => Promise.resolve(res.length === 1));
+      .then(res => Promise.resolve(res[0] as number > 0));
   }
 
   /**

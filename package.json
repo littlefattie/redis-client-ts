@@ -35,7 +35,6 @@
     "Changelog.md",
     "dist/",
     "!dist/tests/",
-    "!**/*.js.map",
     "src/",
     "!src/tests/",
     "tools/"
