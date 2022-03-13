@@ -125,14 +125,14 @@ export class RedisClientPool implements IRedisClientPool {
       delete this.workingClients[clientId];
       if (this.idleClients.indexOf(clientId) < 0) {
         this.idleClients.push(clientId);
-        console.log(`Client with ID ${clientId} has been returned!`);
+        //console.log(`Client with ID ${clientId} has been returned!`);
       }
     } else {
       if (clientId in this.pool) {
         // In this case, the id is in pool, but not placed in working array, so it will be moved to idle array if it is not there.
         if (this.idleClients.indexOf(clientId) < 0) {
           this.idleClients.push(clientId);
-          console.log(`Client with ID ${clientId} has been returned!`);
+          //console.log(`Client with ID ${clientId} has been returned!`);
         }
       } else {
         // There might be something wrong, because the client should be in the pool, but it is not.
